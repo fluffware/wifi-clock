@@ -1,0 +1,34 @@
+/*
+
++-A-+
+F   B
++-G-+
+E   C
++-D-+
+
+*/
+const SEG_A: u8 = 0x80;
+const SEG_B: u8 = 0x40;
+const SEG_C: u8 = 0x02;
+const SEG_D: u8 = 0x04;
+const SEG_E: u8 = 0x01;
+const SEG_F: u8 = 0x10;
+const SEG_G: u8 = 0x20;
+
+// Colon
+const SEG_UPPER: u8 = 0x20;
+const SEG_LOWER: u8 = 0x02;
+
+const DIGIT_POSITIONS: : [u8;5] = [0x40, 0x80, 0x10, 0x01, 0x20];
+const SYMBOLS = [
+    SEG_A|SEG_B|SEG_C|SEG_D|SEG_E|SEG_F, // 0
+    SEG_B | SEG_C, // 1
+    SEG_A | SEG_B | SEG_G | SEG_E | SEG_D, // 2
+    SEG_A | SEG_B | SEG_G | SEG_C | SEG_D, // 3
+    SEG_F |SEG_B | SEG_G | SEG_C, // 4
+    SEG_A | SEG_F | SEG_G | SEG_C | SEG_D, // 5
+    SEG_A|SEG_F|SEG_E|SEG_D|SEG_C|SEG_G, // 6
+    SEG_A|SEG_B | SEG_C, // 7
+    SEG_A|SEG_B|SEG_C|SEG_D|SEG_E|SEG_F|SEG_G, // 8
+    SEG_G|SEG_F|SEG_A|SEG_B|SEG_C|SEG_D,//9
+    ];

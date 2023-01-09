@@ -1,0 +1,25 @@
+pub struct ClockControl
+{
+    clock: &'static Mutex<ThreadModeRawMutex, Clock>,
+}
+
+struct Clock
+{
+}
+
+pub fn new(disp: DisplayControl) -> (ClockControl, impl Future<Output = bool>) {
+    static STATIC_CELL: StaticCell<Mutex<ThreadModeRawMutex, Display>> = StaticCell::new();
+    let clock = STATIC_CELL.init_with(move || {
+        Mutex::new(Clock {
+        })
+    });
+
+    (ClockControl { clock }, clock_runner(disp, clock))
+}
+
+async fn clock_runner(
+    disp: &'static Mutex<ThreadModeRawMutex, Display>,
+    clock: &'static Mutex<ThreadModeRawMutex, Clock>,
+) -> bool {
+    false
+}

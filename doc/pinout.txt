@@ -1,0 +1,42 @@
+LED board	Pico
+1	GND	GND
+2	GND
+3	5V	VSYS
+4	EN	GP9
+5	AS	GP10
+
+11	/WR	GP8
+
+13	D0	GP0
+14	D1	GP1
+15	D2	GP2
+16	D3	GP3
+17	D4	GP4
+18	D5	GP5
+19	D6	GP6
+20	D7	GP7
+
+
+Address 0 selects segment
+
++-A-+
+F   B
++-G-+
+E   C
++-D-+
+
+Bit 7 A
+Bit 6 B
+Bit 5 G Upper colon
+Bit 4 F
+Bit 3 
+Bit 2 D
+Bit 1 C Lower Colon
+Bit 0 E
+
+Address 1 strobes digits
+Bit 7 2nd digit
+Bit 6 1st digit
+Bit 5 Colon
+Bit 4 3rd digit
+Bit 0 4th digit

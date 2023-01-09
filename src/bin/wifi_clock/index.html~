@@ -1,0 +1,22 @@
+<!DOCTYPE HTML PUBLIC "-//IETF//DTD HTML//EN">
+<html> <head>
+    <title>HTTP example</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body onload="start()">
+<form action="/cmd/on" method="get">
+  <input type="submit" value="LED on">
+</form>
+<form action="/cmd/off" method="get">
+  <input type="submit" value="LED off">
+</form>
+<form action="/cmd/write" method="get">
+  <label for="addr">Address: </label>
+  <input id="addr" name="addr" type="text" ><br>
+  <label for="data">Data: </label>
+  <input id="data" name="data" type="text" ><br>
+  <input type="submit" value="Write">
+</form>
+
+</body> </html>
