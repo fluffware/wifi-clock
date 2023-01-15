@@ -35,6 +35,12 @@ cyw43={version="*", features = ["defmt"]}
 static_cell = "1.0"
 httparse={version="1.8", default-features=false}
 
+[build-dependencies]
+serde="*"
+serde_derive="1.0"
+toml="0.5"
+nom="7.1"
+
 [patch.crates-io]
 embassy-time = { git="https://github.com/embassy-rs/embassy.git", rev = "771806be790a2758f1314d6460defe7c2f0d3e99" }
 embassy-sync = { git="https://github.com/embassy-rs/embassy.git", rev = "771806be790a2758f1314d6460defe7c2f0d3e99" }
