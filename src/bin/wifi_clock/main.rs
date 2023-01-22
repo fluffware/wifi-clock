@@ -19,6 +19,7 @@ use httparse::{self, Request};
 use static_cell::StaticCell;
 use wifi_clock::pio_spi::PioSpi;
 use {defmt_rtt as _, panic_probe as _};
+use wifi_clock::blob;
 
 mod clock;
 mod display;
@@ -137,7 +138,7 @@ async fn setup_task(
     net_device: cyw43::NetDriver<'static>,
     mut clock: clock::ClockControl,
 ) {
-    let clm = include_bytes!("../../../cyw43/43439A0_clm.bin");
+    let clm = blob::cyw_43439a0_clm();
     control.init(clm).await;
     info!("Joining");
     control.join_wpa2(env!("SSID"), env!("PASS")).await;
@@ -264,7 +265,7 @@ async fn main(spawner: Spawner) {
     //let wl_on = Output::new(p.PIN_4, Level::Low);
     Timer::after(Duration::from_millis(150)).await;
 
-    let fw = include_bytes!("../../../cyw43/43439A0.bin");
+    let fw = blob::cyw_43439a0();
 
     let mut bus = PioSpi::new(
         sm0,

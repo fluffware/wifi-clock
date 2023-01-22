@@ -1,4 +1,7 @@
 
 [files]
-cyw_43439A0 = "cyw43/43439A0.bin"
-cyw_43439A0_clm = "cyw43/43439A0_clm.bin"
+cyw_43439a0 = {filename= "cyw43/43439A0.bin"}
+cyw_43439a0_clm = {filename= "cyw43/43439A0_clm.bin"}
+
+[probe]
+chip="RP2040"

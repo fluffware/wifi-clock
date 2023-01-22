@@ -34,12 +34,15 @@ pio = "0.2"
 cyw43={version="*", features = ["defmt"]}
 static_cell = "1.0"
 httparse={version="1.8", default-features=false}
+sha1_smol="1.0.0"
+
+[profile.dev-compact]
+inherits = "dev"
+lto = true
+opt-level = 3
 
 [build-dependencies]
-serde="*"
-serde_derive="1.0"
-toml="0.5"
-nom="7.1"
+blob_loader="*"
 
 [patch.crates-io]
 embassy-time = { git="https://github.com/embassy-rs/embassy.git", rev = "771806be790a2758f1314d6460defe7c2f0d3e99" }
@@ -50,3 +53,4 @@ embassy-net = { git="https://github.com/embassy-rs/embassy.git", rev="771806be79
 embassy-net-driver-channel = { git = "https://github.com/embassy-rs/embassy", rev = "771806be790a2758f1314d6460defe7c2f0d3e99" }
 pio = {git = "https://github.com/rp-rs/pio-rs.git"}
 cyw43={git = "https://github.com/embassy-rs/cyw43.git"}
+blob_loader={git= "https://github.com/fluffware/blob_loader.git"}
