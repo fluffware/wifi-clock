@@ -8,10 +8,6 @@
 //! updating `memory.x` ensures a rebuild of the application with the
 //! new memory settings.
 
-use std::env;
-use std::fs::File;
-use std::io::Write;
-use std::path::PathBuf;
 use blob_loader;
 use std::process::ExitCode;
 

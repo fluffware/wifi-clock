@@ -1,36 +1,38 @@
 #![no_std]
 #![no_main]
-#![feature(type_alias_impl_trait)]
+
 use core::fmt::{self, Write as _};
-use cyw43::Control;
+use cortex_m::singleton;
+use cyw43::{Control, JoinOptions};
+use cyw43_pio::PioSpi;
 use defmt::{debug, info, warn};
+use embassy_executor;
 use embassy_executor::Spawner;
-use embassy_futures::select::select3;
+use embassy_futures::select::{select, select3};
+use embassy_futures::yield_now;
 use embassy_net::tcp::TcpSocket;
-use embassy_net::{Stack, StackResources};
+use embassy_net::Ipv4Address;
+use embassy_net::Runner;
+use embassy_net::{Config as NetConfig, Stack};
+use embassy_rp::bind_interrupts;
 use embassy_rp::gpio::{AnyPin, Level, Output};
-use embassy_rp::pio::{PioPeripherial, PioStateMachine};
-use embassy_rp::Peripheral;
-use embassy_time::block_for;
+use embassy_rp::peripherals::PIO0;
+use embassy_rp::pio::{InterruptHandler, Pio};
 use embassy_time::{Duration, Timer};
-use embedded_hal_async::spi::ExclusiveDevice;
-use embedded_io::asynch::Write;
+use heapless;
 use httparse::{self, Request};
 use static_cell::StaticCell;
-use wifi_clock::pio_spi::PioSpi;
-use {defmt_rtt as _, panic_probe as _};
 use wifi_clock::blob;
+use wifi_clock::dhcp_server::{DhcpServer, DhcpServerConfig};
+
+use {defmt_rtt as _, panic_probe as _};
 
 mod clock;
 mod display;
 
-macro_rules! singleton {
-    ($val:expr) => {{
-        type T = impl Sized;
-        static STATIC_CELL: StaticCell<T> = StaticCell::new();
-        STATIC_CELL.init_with(move || $val)
-    }};
-}
+bind_interrupts!(struct Irqs {
+    PIO0_IRQ_0 => InterruptHandler<PIO0>;
+});
 
 struct WriteBuf<'a> {
     buf: &'a mut [u8],
@@ -83,12 +85,12 @@ async fn handle_request<'a>(
                 } else if cmd.starts_with("off") {
                     *led_on = false;
                 } else if cmd.starts_with("start") {
-		    clock.stopwatch_start().await;
-		} else if cmd.starts_with("stop") {
-		    clock.stopwatch_stop().await;
-		} else if cmd.starts_with("reset") {
-		    clock.stopwatch_reset().await;
-		}
+                    clock.stopwatch_start().await;
+                } else if cmd.starts_with("stop") {
+                    clock.stopwatch_stop().await;
+                } else if cmd.starts_with("reset") {
+                    clock.stopwatch_reset().await;
+                }
                 /*else if let Some(args) = cmd.strip_prefix("write?") {
                 let args = args.split('&');
                 let mut addr = 0;
@@ -125,45 +127,29 @@ async fn handle_request<'a>(
     }
 }
 #[embassy_executor::task]
-async fn net_task(stack: &'static Stack<cyw43::NetDriver<'static>>) -> ! {
-    stack.run().await
+async fn net_task(runner: &'static mut Runner<'static, cyw43::NetDriver<'static>>) -> ! {
+    runner.run().await
 }
 const MAX_TX_BLOCK: usize = 1024;
 const MAX_RX_BLOCK: usize = 1024;
 
-#[embassy_executor::task]
-async fn setup_task(
-    spawner: Spawner,
+async fn http_task<D>(
+    stack: Stack<'static>,
     mut control: Control<'static>,
-    net_device: cyw43::NetDriver<'static>,
     mut clock: clock::ClockControl,
-) {
-    let clm = blob::cyw_43439a0_clm();
-    control.init(clm).await;
-    info!("Joining");
-    control.join_wpa2(env!("SSID"), env!("PASS")).await;
-    let config = embassy_net::ConfigStrategy::Dhcp;
-    let seed = 63395997077266;
-
-    let stack = &*singleton!(Stack::new(
-        net_device,
-        config,
-        singleton!(StackResources::<1, 2, 8>::new()),
-        seed
-    ));
-    spawner.spawn(net_task(stack)).unwrap();
-    info!("Done");
-
+) where
+    D: embassy_net::driver::Driver,
+{
     control.gpio_set(0, true).await;
 
-    let rx_buffer: &mut [u8; MAX_RX_BLOCK] = singleton!([0; MAX_RX_BLOCK]);
-    let tx_buffer: &mut [u8; MAX_TX_BLOCK] = singleton!([0; MAX_TX_BLOCK]);
-    let buf: &mut [u8; 4096] = singleton!([0; 4096]);
-    let resp: &mut [u8; 8192] = singleton!([0u8; 8192]);
+    let rx_buffer = singleton!(: [u8; MAX_RX_BLOCK] = [0; MAX_RX_BLOCK]).unwrap();
+    let tx_buffer = singleton!(: [u8; MAX_TX_BLOCK] = [0; MAX_TX_BLOCK]).unwrap();
+    let buf = singleton!(: [u8; 4096] = [0; 4096]).unwrap();
+    let resp = singleton!(: [u8; 8192] = [0; 8192]).unwrap();
     let mut led_on = true;
     loop {
         let mut socket = TcpSocket::new(stack, rx_buffer, tx_buffer);
-        socket.set_timeout(Some(embassy_net::SmolDuration::from_secs(10)));
+        socket.set_timeout(Some(Duration::from_secs(60)));
 
         info!("Listening on TCP:80...");
         if let Err(e) = socket.accept(80).await {
@@ -213,7 +199,7 @@ async fn setup_task(
                     &mut content_type,
                     &mut body,
                     &mut led_on,
-		    &mut clock,
+                    &mut clock,
                 )
                 .await;
                 buf_end = 0;
@@ -237,8 +223,8 @@ async fn setup_task(
                     } else {
                         tx_block
                     };
-                    match socket.write_all(send_block).await {
-                        Ok(()) => {}
+                    match socket.write(send_block).await {
+                        Ok(_wlen) => {}
                         Err(e) => {
                             warn!("write error: {:?}", e);
                             break;
@@ -252,37 +238,98 @@ async fn setup_task(
     }
 }
 
+async fn wait_for_config<D>(stack: &'static Stack<'static>) -> embassy_net::StaticConfigV4
+where
+    D: embassy_net::driver::Driver,
+{
+    loop {
+        if let Some(config) = stack.config_v4() {
+            return config.clone();
+        }
+        yield_now().await;
+    }
+}
+
+#[embassy_executor::task]
+async fn setup_task(
+    spawner: Spawner,
+    mut control: Control<'static>,
+    net_device: cyw43::NetDriver<'static>,
+    clock: clock::ClockControl,
+) {
+    let clm = blob::cyw_43439a0_clm();
+    control.init(clm).await;
+    let config;
+    let ssid = option_env!("SSID");
+    let pass = option_env!("PASS");
+    if let (Some(ssid), Some(pass)) = (ssid, pass) {
+        info!("Joining");
+	let options = JoinOptions::new(pass.as_bytes());
+        loop {
+            match control.join(ssid, options.clone()).await {
+                Ok(_) => break,
+                Err(err) => {
+                    info!("join failed with status={}", err.status);
+                }
+            }
+        }
+        config = NetConfig::dhcpv4(Default::default());
+    } else {
+        config = NetConfig::ipv4_static(embassy_net::StaticConfigV4 {
+            address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(192, 168, 17, 1), 24),
+            dns_servers: heapless::Vec::new(),
+            gateway: None,
+        });
+        control.start_ap_wpa2("Clock", "password", 5).await;
+    }
+    let seed = 63395997077266;
+    static RESOURCES: StaticCell<embassy_net::StackResources<3>> = StaticCell::new();
+    let (stack, runner) = singleton!(:(Stack<'static>, Runner<'static, cyw43::NetDriver>)= embassy_net::new(
+        net_device,
+        config,
+        RESOURCES.init(embassy_net::StackResources::new()),
+        seed
+    ))
+    .unwrap();
+    spawner.spawn(net_task(runner)).unwrap();
+
+    wait_for_config::<cyw43::NetDriver>(stack).await;
+    info!("Done");
+    const DHCP_SERVER_CONFIG: DhcpServerConfig = DhcpServerConfig {
+        subnet_mask: Ipv4Address::new(255, 255, 255, 0),
+        router: Some(Ipv4Address::new(192, 168, 17, 1)),
+        lease_duration: 60 * 10,
+    };
+    let mut dhcp_server =
+        DhcpServer::<4>::new(Ipv4Address::new(192, 168, 17, 151), DHCP_SERVER_CONFIG);
+    select(http_task::<cyw43::NetDriver>(*stack, control, clock), dhcp_server.run(*stack)).await;
+}
+
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
-    let pio = p.PIO0;
-    let (_, sm0, ..) = pio.split();
-
-    info!("Pio: {}, SM: {}", sm0.pio_no(), sm0.sm_no());
-
     let wl_on = Output::new(p.PIN_23, Level::Low);
-    //let wl_on = Output::new(p.PIN_4, Level::Low);
     Timer::after(Duration::from_millis(150)).await;
 
     let fw = blob::cyw_43439a0();
 
-    let mut bus = PioSpi::new(
-        sm0,
-        p.PIN_29,
-        p.PIN_24,
-        p.DMA_CH0.into_ref(),
-        p.DMA_CH1.into_ref(),
-    );
-    //let mut bus = PioSpi::new(&pio, &sm0, p.PIN_1, p.PIN_0);
-    bus.set_data_level(Level::Low);
     let cs = Output::new(p.PIN_25, Level::High);
+    let mut pio = Pio::new(p.PIO0, Irqs);
+    let spi = PioSpi::new(
+        &mut pio.common,
+        pio.sm0,
+        pio.irq0,
+        cs,
+        p.PIN_24,
+        p.PIN_29,
+        p.DMA_CH0,
+    );
     //let cs = Output::new(p.PIN_2, Level::High);
-    let spi = ExclusiveDevice::new(bus, cs);
-    let state = singleton!(cyw43::State::new());
+    let state = singleton!(: cyw43::State = cyw43::State::new()).unwrap();
 
     // LED control pins
-    let d_pins: [Output<AnyPin>; 8] = [
+    let d_pins: [Output; 8] = [
         Output::new(AnyPin::from(p.PIN_0), Level::High),
         Output::new(AnyPin::from(p.PIN_1), Level::High),
         Output::new(AnyPin::from(p.PIN_2), Level::High),

@@ -1,12 +1,11 @@
 use super::display::{
-    self, DisplayControl, SYM_BLANK, SYM_COLON, SYM_COLON_LOWER, SYM_COLON_UPPER,
+    self, DisplayControl, //SYM_BLANK, SYM_COLON, SYM_COLON_LOWER, SYM_COLON_UPPER,
 };
 use core::future::Future;
 use defmt::debug;
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, Instant, Ticker, Timer};
-use futures::StreamExt;
+use embassy_time::{Duration, Ticker};
 use static_cell::StaticCell;
 
 pub struct ClockControl {
@@ -40,7 +39,7 @@ impl ClockControl
 #[derive(Copy, Clone)]
 enum ClockState {
     Startup,
-    Time,
+    //Time,
     StopWatchStopped,
     StopWatchRunning,
 }
@@ -90,7 +89,6 @@ async fn clock_runner(
 		disp.set_int(2..4, ((run_time / 2) % 60) as u16).await;
 		disp.set_int(0..2, (run_time / (2*  60)) as u16).await;
 	    }
-	    _ => {}
 	}
 	ticker.next().await;	    
     }

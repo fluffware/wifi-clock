@@ -1,12 +1,11 @@
 use core::future::Future;
-use defmt::debug;
-use embassy_rp::gpio::{AnyPin, Level, Output};
+use core::ops::Range;
+use embassy_rp::gpio::{Level, Output};
 use embassy_sync::blocking_mutex::raw::ThreadModeRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::block_for;
-use embassy_time::{Duration, Instant, Timer};
+use embassy_time::{Duration, Timer};
 use static_cell::StaticCell;
-use core::ops::Range;
 /*
 
 +-A-+
@@ -54,22 +53,22 @@ const SYMBOLS: [u8; 20] = [
 
 pub const SYM_BLANK: u8 = 16;
 pub const SYM_COLON: u8 = SYM_BLANK + 1;
-pub const SYM_COLON_UPPER: u8 = SYM_COLON + 1;
-pub const SYM_COLON_LOWER: u8 = SYM_COLON_UPPER + 1;
+// pub const SYM_COLON_UPPER: u8 = SYM_COLON + 1;
+// pub const SYM_COLON_LOWER: u8 = SYM_COLON_UPPER + 1;
 
 pub struct LedBus<'a> {
-    data: [Output<'a, AnyPin>; 8],
-    enable: Output<'a, AnyPin>,
-    addr_sel: Output<'a, AnyPin>,
-    write: Output<'a, AnyPin>, // Low write, high read
+    data: [Output<'a>; 8],
+    enable: Output<'a>,
+    addr_sel: Output<'a>,
+    write: Output<'a>, // Low write, high read
 }
 
 impl<'a> LedBus<'a> {
     pub fn new(
-        data: [Output<'a, AnyPin>; 8],
-        enable: Output<'a, AnyPin>,
-        addr_sel: Output<'a, AnyPin>,
-        write: Output<'a, AnyPin>,
+        data: [Output<'a>; 8],
+        enable: Output<'a>,
+        addr_sel: Output<'a>,
+        write: Output<'a>,
     ) -> Self {
         Self {
             data,
@@ -109,21 +108,21 @@ impl DisplayControl {
     pub async fn set_sym(&self, pos: usize, sym: u8) {
         (*self.disp.lock().await).syms[pos] = sym;
     }
-    
-    pub async fn set_sym_range(&self,  range: Range<usize>, sym: u8) {
-	let mut disp = self.disp.lock().await;
-	for d in range {
-	    disp.syms[d] = sym;
-	}
+
+    pub async fn set_sym_range(&self, range: Range<usize>, sym: u8) {
+        let mut disp = self.disp.lock().await;
+        for d in range {
+            disp.syms[d] = sym;
+        }
     }
 
     pub async fn set_int(&self, mut range: Range<usize>, mut val: u16) {
-	let mut disp = self.disp.lock().await;
-	while let Some(d) = range.next_back()  {
-	    let sym = (val % 10) as u8;
-	    disp.syms[d] = sym;
-	    val /= 10;
-	}
+        let mut disp = self.disp.lock().await;
+        while let Some(d) = range.next_back() {
+            let sym = (val % 10) as u8;
+            disp.syms[d] = sym;
+            val /= 10;
+        }
     }
 }
 struct Display {
